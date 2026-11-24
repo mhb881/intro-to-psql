@@ -1,0 +1,312 @@
+# Joining Tables — LEFT JOIN（左连接）
+
+上一节学习了 `INNER JOIN`，它只返回两张表中能够匹配的记录。
+
+但实际业务中，**我们经常需要保留一张表中的全部记录，即使另一张表没有对应的数据**。
+
+例如：
+
+- 查询所有用户，以及他们发布的文章。
+- 找出从未发布过文章的用户。
+- 找出没有关联用户的文章（孤儿记录）。
+
+这些需求就需要使用 `LEFT JOIN`。
+
+---
+
+## 1. LEFT JOIN：保留左表的全部记录
+
+先回顾两张表：
+
+**users**
+
+| id   | name  |
+| ---- | ----- |
+| 1    | Aaron |
+| 2    | Sarah |
+| 3    | Emma  |
+| 4    | John  |
+
+**posts**
+
+| id   | title             | user_id |
+| ---- | ----------------- | ------- |
+| 101  | PostgreSQL Basics | 1       |
+| 102  | SQL Introduction  | 1       |
+| 103  | Database Design   | 2       |
+| 104  | Advanced Queries  | 5       |
+
+这里存在两种特殊情况：
+
+- John 没有发布任何文章。
+- ID 为 5 的文章作者，在 `users` 表中不存在。
+
+假设现在的需求是：**查询所有用户，以及他们发布的文章，即使用户没有发布过文章，也必须保留用户记录。**
+
+这时就应该使用 `LEFT JOIN`。
+
+基本语法：
+
+```sql
+SELECT columns
+FROM table_A
+LEFT JOIN table_B
+    ON table_A.foreign_key = table_B.primary_key;
+```
+
+例如：
+
+```sql
+SELECT
+    users.id,
+    users.name,
+    posts.title
+FROM users
+LEFT JOIN posts
+    ON users.id = posts.user_id;
+```
+
+这里需要注意：
+
+- `FROM` 后面的 `users` 是左表（Left Table）。
+- `LEFT JOIN` 后面的 `posts` 是右表（Right Table）。
+- `ON` 指定两张表的关联条件。
+
+**LEFT JOIN 的核心规则：左表的所有记录都会保留，右表只有匹配成功的记录才会被关联进来。**
+
+如果右表没有匹配记录，那么对应的右表字段会使用 `NULL` 填充。
+
+查询结果大致如下：
+
+| users.id | users.name | posts.title       |
+| -------- | ---------- | ----------------- |
+| 1        | Aaron      | PostgreSQL Basics |
+| 1        | Aaron      | SQL Introduction  |
+| 2        | Sarah      | Database Design   |
+| 3        | Emma       | NULL              |
+| 4        | John       | NULL              |
+
+这里还需要理解一个现象：**如果左表的一条记录匹配到右表的多条记录，那么左表的数据会重复出现。**
+
+例如，Aaron 发布了两篇文章，因此结果中会出现两行 Aaron。这不是重复数据错误，而是因为一位用户关联了多篇文章。
+
+---
+
+### LEFT JOIN 与 INNER JOIN 的区别
+
+```mermaid
+flowchart TD
+    %% 定义节点
+    A["两张表：users 和 posts"]
+    B["选择连接方式"]
+    C["INNER JOIN"]
+    D["LEFT JOIN"]
+    E["只保留匹配成功的记录"]
+    F["保留左表全部记录"]
+    G["右表匹配成功：关联数据"]
+    H["右表没有匹配：填充 NULL"]
+
+    %% 连线关系
+    A --> B
+    B --> C
+    B --> D
+    C --> E
+    D --> F
+    F --> G
+    F --> H
+
+    %% 全局样式：字体加粗
+    classDef default font-weight:bold;
+
+    %% 颜色与边框定义 (提取自原图)
+    classDef topBlue fill:#EAF3FE,stroke:#9BC3F5,stroke-width:1.5px,color:#1B4A8A,rx:12px,ry:12px
+    classDef dashedBlue fill:#F4F8FF,stroke:#9BC3F5,stroke-width:1.5px,stroke-dasharray: 4 4,color:#1B4A8A,rx:12px,ry:12px
+    classDef leftBlue fill:#EAF3FE,stroke:#9BC3F5,stroke-width:1.5px,color:#1B4A8A,rx:12px,ry:12px
+    classDef rightGreen fill:#EAF5ED,stroke:#A4D5B5,stroke-width:1.5px,color:#2C6A3B,rx:12px,ry:12px
+
+    %% 应用样式
+    class A topBlue
+    class B dashedBlue
+    class C,E leftBlue
+    class D,F,G,H rightGreen
+
+    %% 连线样式：使用灰蓝色细线
+    linkStyle default stroke:#8E9CA6,stroke-width:1.5px,fill:none
+```
+
+| 对比               | INNER JOIN         | LEFT JOIN            |
+| ------------------ | ------------------ | -------------------- |
+| 左表未匹配的记录   | 排除               | 保留                 |
+| 右表未匹配的记录   | 排除               | 不会作为独立记录保留 |
+| 没有匹配的右表字段 | 不会产生结果行     | 使用 NULL 填充       |
+| 主要用途           | 查询关联成功的数据 | 保留左表全部数据     |
+
+---
+
+## 2. 使用 LEFT JOIN 查找缺失的数据
+
+LEFT JOIN 不仅可以查询完整的数据关系，还能用于发现两张表之间没有匹配的记录。
+
+其基本思路是：
+
+1. 使用 LEFT JOIN 保留左表全部记录。
+2. 对于没有匹配的记录，右表字段会被填充为 `NULL`。
+3. 使用 `WHERE ... IS NULL` 筛选这些没有匹配成功的记录。
+
+### 找出没有发布文章的用户
+
+例如，我们想知道哪些用户从未发布过文章：
+
+```sql
+SELECT
+    u.id,
+    u.name,
+    p.title
+FROM users AS u
+LEFT JOIN posts AS p
+    ON u.id = p.user_id
+WHERE p.id IS NULL
+ORDER BY u.id ASC
+LIMIT 10;
+```
+
+为什么使用 `WHERE p.id IS NULL`？
+
+因为 `posts.id` 是文章表的主键，正常存在的文章一定有 ID。
+
+因此：
+
+- 如果用户有文章，`p.id` 就有值。
+- 如果用户没有文章，右表没有匹配记录，`p.id` 就是 `NULL`。
+
+这就可以准确筛选出没有发布文章的用户。
+
+---
+
+### 找出没有关联用户的文章
+
+刚才查询的是：所有用户中，哪些用户没有文章。
+
+现在反过来，我们想知道：**所有文章中，哪些文章没有对应的用户？**
+
+只需要交换左右表：
+
+```sql
+SELECT
+    p.id AS post_id,
+    u.id AS user_id,
+    p.title
+FROM posts AS p
+LEFT JOIN users AS u
+    ON p.user_id = u.id
+WHERE u.id IS NULL;
+```
+
+这次：
+
+- `posts` 成为左表，因此所有文章都会被保留。
+- `users` 成为右表，负责提供作者信息。
+- 找不到对应用户时，`u.id` 就会变成 `NULL`。
+
+最终得到的就是没有关联用户的文章，也就是课程中提到的 Orphaned Posts（孤儿文章）。
+
+这类数据可能来自用户被删除、数据迁移或其他数据维护操作，可以进一步检查、重新分配或清理。
+
+---
+
+### 两种缺失数据查询的对比
+
+| 需求               | 左表    | 右表    | NULL 判断      |
+| ------------------ | ------- | ------- | -------------- |
+| 找出没有文章的用户 | `users` | `posts` | `p.id IS NULL` |
+| 找出没有用户的文章 | `posts` | `users` | `u.id IS NULL` |
+
+核心规律：想找出哪张表中没有关联数据，就将这张表作为 LEFT JOIN 的左表，然后检查右表的主键是否为 NULL。
+
+---
+
+## 3. LEFT JOIN 的几个实践细节
+
+**（1）ON 条件中等号两侧的顺序不影响匹配结果**
+
+下面两种写法等价：
+
+```sql
+-- 左表字段写在前面
+ON users.id = posts.user_id
+
+-- 右表字段写在前面
+ON posts.user_id = users.id
+```
+
+因为等值比较满足交换律。不过，**讲师个人更喜欢将左表的字段写在前面，让条件与连接顺序保持一致**。
+
+
+
+**（2）LEFT JOIN 必须明确指定 LEFT**
+
+与 `INNER JOIN` 可以简写为 `JOIN` 不同，不能省略 `LEFT` 来表达左连接。
+
+```sql
+FROM users
+LEFT JOIN posts
+    ON users.id = posts.user_id
+```
+
+
+
+**（3）过滤 NULL 可以让 LEFT JOIN 实现类似 INNER JOIN 的效果**
+
+例如：
+
+```sql
+SELECT
+    u.name,
+    p.title
+FROM users AS u
+LEFT JOIN posts AS p
+    ON u.id = p.user_id
+WHERE p.id IS NOT NULL;
+```
+
+由于没有匹配文章的用户，其 `p.id` 为 `NULL`，因此会被过滤掉。
+
+最终只留下成功匹配的用户和文章，结果与这个等值 `INNER JOIN` 查询一致。
+
+```sql
+SELECT
+    u.name,
+    p.title
+FROM users AS u
+INNER JOIN posts AS p
+    ON u.id = p.user_id;
+```
+
+这也说明：**SQL 可以通过不同的查询结构实现相同的结果，但应该根据实际需求选择更直观的写法**。
+
+---
+
+## 本节重点回顾
+
+| 知识点              | 核心内容                                       |
+| ------------------- | ---------------------------------------------- |
+| LEFT JOIN           | 保留左表全部记录，右表只关联匹配的数据         |
+| Left Table          | `FROM` 后面指定的第一张表                      |
+| Right Table         | `LEFT JOIN` 后面指定的表                       |
+| ON                  | 指定两张表的关联条件                           |
+| NULL Filling        | 右表没有匹配记录时，其字段填充为 NULL          |
+| Row Multiplication  | 左表一条记录匹配右表多条记录时，会产生多行结果 |
+| `WHERE ... IS NULL` | 找出左表中没有匹配右表记录的数据               |
+
+**本节最重要的理解：**
+
+1. `INNER JOIN` 关注两张表的匹配部分，而 `LEFT JOIN` 关注左表的完整性。
+2. LEFT JOIN 不会因为右表缺少关联数据而丢弃左表记录，而是使用 `NULL` 填充右表字段。
+3. 利用 `LEFT JOIN + WHERE 右表主键 IS NULL`，可以找出缺少关联数据的记录。
+
+现在已经掌握了两种 JOIN：
+
+- `INNER JOIN`：只保留匹配成功的记录。
+- `LEFT JOIN`：保留左表全部记录。
+
+后续学习其他连接类型时，重点继续关注一个问题：**当两张表无法匹配时，数据库究竟保留哪一侧的记录？**
